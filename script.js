@@ -1,168 +1,234 @@
-class TrieNode {
-    constructor() {
-        this.children = {};
-        this.isEndOfWord = false;
-        this.fullSentence = "";
+// Import classes properly
+import FuzzyMatcher from './fuzzy-matcher.js';
+import EnhancedTrie from './enhanced-trie.js';
+
+/**
+ * Combines EnhancedTrie and FuzzyMatcher for fuzzy autocomplete
+ */
+class FuzzyTrieAutocomplete {
+  constructor(maxDistance = 2) {
+    this.fuzzyMatcher = new FuzzyMatcher(maxDistance);
+    this.trie = new EnhancedTrie();
+  }
+
+  insert(sentence) {
+    if (sentence && sentence.trim()) {
+      this.trie.insert(sentence);
+      return true;
     }
-}
+    return false;
+  }
 
-class Trie {
-    constructor() {
-        this.root = new TrieNode();
-    }
+  autocomplete(query, limit = 10) {
+    if (!query) return [];
 
-    insert(sentence) {
-        let node = this.root;
-        for (const char of sentence) {
-            if (char === ' ') continue; // Ignore spaces
-            if (!node.children[char]) {
-                node.children[char] = new TrieNode();
-            }
-            node = node.children[char];
-        }
-        node.isEndOfWord = true;
-        node.fullSentence = sentence;
-    }
+    // Generate fuzzy variations of the query
+    const variations = this.fuzzyMatcher.getVariations(query);
+    const allSuggestions = [];
 
-    autocomplete(prefix) {
-        let node = this.root;
-        for (const char of prefix) {
-            if (char === ' ') continue; // Ignore spaces
-            if (!node.children[char]) {
-                return []; // No suggestions
-            }
-            node = node.children[char];
-        }
-        return this.findWords(node);
-    }
-
-    findWords(node) {
-        const results = [];
-        if (node.isEndOfWord) {
-            results.push(node.fullSentence);
-        }
-        for (const child in node.children) {
-            results.push(...this.findWords(node.children[child]));
-        }
-        return results;
-    }
-}
-
-let trie = new Trie();
-let currentPage = 0;
-const resultsPerPage = 5;
-let uploadedFiles = [];
-
-// Event listener for file input
-document.getElementById('fileInput').addEventListener('change', (event) => {
-    const files = event.target.files;
-    const fileDropdown = document.getElementById('fileDropdown');
-
-    // If files were uploaded, add them to the uploadedFiles array and update the dropdown list
-    if (files.length > 0) {
-        uploadedFiles.push(...Array.from(files));
-
-        // Clear the dropdown and add the filenames
-        fileDropdown.innerHTML = '<option disabled selected>Uploaded files</option>';
-        uploadedFiles.forEach((file) => {
-            const option = document.createElement('option');
-            option.textContent = file.name;
-            fileDropdown.appendChild(option);
-        });
-
-        // Read the uploaded files and add their sentences to the trie
-        Array.from(files).forEach(file => {
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                const sentences = splitText(e.target.result); // Split into sentences
-                sentences.forEach(sentence => {
-                    if (sentence.trim()) {
-                        trie.insert(sentence.trim()); // Insert sentences into the trie
-                    }
-                });
-            };
-            reader.readAsText(file); // Read file as text
-        });
-    }
-});
-
-// Function to split text into sentences
-function splitText(text) {
-    return text.match(/[^.!?]*[.!?]/g) || [];
-}
-
-// Function to display suggestions in the results section
-function displaySuggestions(results, prefix) {
-    const resultsDiv = document.getElementById('results');
-    const startIndex = currentPage * resultsPerPage;
-    const paginatedResults = results.slice(startIndex, startIndex + resultsPerPage);
-
-    // Clear suggestions and add new ones with highlighting
-    resultsDiv.innerHTML = '<h4>Suggestions</h4>';
-    paginatedResults.forEach(res => {
-        const highlightedSuggestion = res.replace(new RegExp(`(${prefix})`, 'gi'), `<span class="highlight">$1</span>`);
-        const suggestionItem = document.createElement('div');
-        suggestionItem.className = 'suggestion-item';
-        suggestionItem.innerHTML = highlightedSuggestion;
-
-        // Click event to insert the selected suggestion into the input field
-        suggestionItem.addEventListener('click', () => {
-            const input = document.getElementById('prefixInput');
-            const sentences = input.value.split('.');
-            sentences[sentences.length - 1] = res;
-            input.value = sentences.join('.').trim(); // Remove extra spaces, no additional period needed
-            resultsDiv.innerHTML = '<h4>Suggestions</h4>'; // Clear suggestions after selection
-        });
-
-        resultsDiv.appendChild(suggestionItem);
+    // Collect suggestions for each variation
+    variations.forEach(variation => {
+      const suggestions = this.trie.autocomplete(variation, limit);
+      allSuggestions.push(...suggestions);
     });
 
-    // Next button if more results available
-    const nextButton = document.createElement('button');
-    nextButton.textContent = 'Next';
-    nextButton.className = 'next-button';
-    nextButton.onclick = () => {
-        currentPage++;
-        displaySuggestions(results, prefix);
-    };
+    // De-duplicate
+    const uniqueSuggestions = [...new Set(allSuggestions)];
 
-    // Previous button for navigating back
-    const prevButton = document.createElement('button');
-    prevButton.textContent = 'Previous';
-    prevButton.className = 'prev-button';
-    prevButton.onclick = () => {
-        currentPage--;
-        displaySuggestions(results, prefix);
-    };
+    // Rank final list by fuzzy similarity
+    return this.fuzzyMatcher.rankMatches(query, uniqueSuggestions).slice(0, limit);
+  }
 
-    if (startIndex + resultsPerPage < results.length) {
-        resultsDiv.appendChild(nextButton);
-    }
-
-    if (currentPage > 0) {
-        resultsDiv.insertBefore(prevButton, nextButton);
-    }
+  recordSelection(sentence) {
+    this.trie.recordSelection(sentence);
+  }
 }
 
-// Event listener for input field changes
-let timeoutId;
-document.getElementById('prefixInput').addEventListener('input', () => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => {
-        const input = document.getElementById('prefixInput').value;
-        const resultsDiv = document.getElementById('results');
+// --- Initialization & DOM Wiring ---
+document.addEventListener('DOMContentLoaded', () => {
+  const fuzzyAutocomplete = new FuzzyTrieAutocomplete(2);
+  let currentPage = 0;
+  const resultsPerPage = 5;
 
-        // Get the last sentence (after the last full stop)
-        const sentences = input.split('.');
-        const lastSentence = sentences.pop().trim();
+  // Get DOM elements
+  const fileInput = document.getElementById('fileInput');
+  const fileDropdown = document.getElementById('fileDropdown');
+  const prefixInput = document.getElementById('prefixInput');
+  const resultsDiv = document.getElementById('results');
+  const uploadStatus = document.getElementById('upload-status');
 
-        if (lastSentence === '') {
-            resultsDiv.innerHTML = '<h4>Suggestions</h4>';
-            return;
+  // Initialize with some example data
+  const exampleSentences = [
+    "The quick brown fox jumps over the lazy dog.",
+    "Hello world, this is a test sentence.",
+    "JavaScript is a programming language.",
+    "Enhanced tries are useful for autocomplete features.",
+    "Fuzzy matching allows for typo tolerance."
+  ];
+  
+  exampleSentences.forEach(sentence => {
+    fuzzyAutocomplete.insert(sentence);
+  });
+
+  // File upload handling
+  fileInput.addEventListener('change', event => {
+    const files = Array.from(event.target.files);
+    
+    if (files.length === 0) {
+      uploadStatus.textContent = "No files selected";
+      return;
+    }
+    
+    uploadStatus.textContent = `Processing ${files.length} file(s)...`;
+    
+    // Clear and update dropdown
+    fileDropdown.innerHTML = '<option disabled selected>Uploaded files</option>';
+    
+    let totalSentences = 0;
+    let processedFiles = 0;
+    
+    files.forEach(file => {
+      // Show in dropdown
+      const opt = document.createElement('option');
+      opt.textContent = file.name;
+      fileDropdown.appendChild(opt);
+
+      // Read and insert sentences
+      const reader = new FileReader();
+      reader.onload = e => {
+        const content = e.target.result;
+        // Split by sentence endings
+        const sentences = content.split(/[.!?]/)
+          .map(s => s.trim())
+          .filter(s => s.length > 0)
+          .map(s => s + ".");
+        
+        // Insert each sentence
+        let insertedCount = 0;
+        sentences.forEach(s => {
+          if (fuzzyAutocomplete.insert(s)) {
+            insertedCount++;
+          }
+        });
+        
+        totalSentences += insertedCount;
+        processedFiles++;
+        
+        if (processedFiles === files.length) {
+          uploadStatus.textContent = `Processed ${totalSentences} sentences from ${files.length} file(s)`;
+          setTimeout(() => {
+            uploadStatus.textContent = "";
+          }, 3000);
         }
+      };
+      reader.onerror = () => {
+        uploadStatus.textContent = `Error reading file: ${file.name}`;
+      };
+      reader.readAsText(file);
+    });
+  });
 
-        const results = trie.autocomplete(lastSentence);
-        currentPage = 0;
-        displaySuggestions(results, lastSentence);
-    }, 1000); // Delay to prevent too many requests during typing
+  // Render paginated suggestions
+  function displaySuggestions(suggestions, query) {
+    resultsDiv.innerHTML = '<h4>Suggestions</h4>';
+    
+    if (!suggestions || suggestions.length === 0) {
+      resultsDiv.innerHTML += '<p>No suggestions found.</p>';
+      return;
+    }
+    
+    const start = currentPage * resultsPerPage;
+    const pageItems = suggestions.slice(start, start + resultsPerPage);
+
+    pageItems.forEach(text => {
+      const div = document.createElement('div');
+      div.className = 'suggestion-item';
+      
+      // Highlight match if possible
+      try {
+        div.innerHTML = text.replace(
+          new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+          '<span class="highlight">$1</span>'
+        );
+      } catch (e) {
+        div.textContent = text; // Fallback if regex fails
+      }
+      
+      div.addEventListener('click', () => {
+        // Replace last sentence in input or just set the value
+        if (prefixInput.value.includes('.')) {
+          const parts = prefixInput.value.split('.');
+          parts[parts.length - 1] = text.replace(/\.$/, '');
+          prefixInput.value = parts.join('.').trim();
+        } else {
+          prefixInput.value = text;
+        }
+        
+        // Record this selection to improve future suggestions
+        fuzzyAutocomplete.recordSelection(text);
+        resultsDiv.innerHTML = '<h4>Suggestions</h4>';
+      });
+      
+      resultsDiv.appendChild(div);
+    });
+
+    // Add pagination controls if needed
+    if (suggestions.length > resultsPerPage) {
+      const controls = document.createElement('div');
+      controls.className = 'pagination-controls';
+
+      if (currentPage > 0) {
+        const prev = document.createElement('button');
+        prev.textContent = 'Previous';
+        prev.className = 'btn btn-sm btn-outline-primary mr-2';
+        prev.onclick = () => {
+          currentPage--;
+          displaySuggestions(suggestions, query);
+        };
+        controls.appendChild(prev);
+      }
+
+      // Page indicator
+      const pageIndicator = document.createElement('span');
+      pageIndicator.className = 'mx-2';
+      pageIndicator.textContent = `Page ${currentPage + 1} of ${Math.ceil(suggestions.length / resultsPerPage)}`;
+      controls.appendChild(pageIndicator);
+
+      if (start + resultsPerPage < suggestions.length) {
+        const next = document.createElement('button');
+        next.textContent = 'Next';
+        next.className = 'btn btn-sm btn-outline-primary ml-2';
+        next.onclick = () => {
+          currentPage++;
+          displaySuggestions(suggestions, query);
+        };
+        controls.appendChild(next);
+      }
+
+      resultsDiv.appendChild(controls);
+    }
+  }
+
+  // Debounced input handling
+  let timeoutId;
+  prefixInput.addEventListener('input', () => {
+    clearTimeout(timeoutId);
+    
+    timeoutId = setTimeout(() => {
+      const text = prefixInput.value;
+      // Get the last partial sentence (after the last period)
+      const lastSentence = text.includes('.') ? 
+        text.split('.').pop().trim() : 
+        text.trim();
+      
+      if (!lastSentence) {
+        resultsDiv.innerHTML = '<h4>Suggestions</h4>';
+        return;
+      }
+      
+      currentPage = 0;
+      const suggestions = fuzzyAutocomplete.autocomplete(lastSentence, 50);
+      displaySuggestions(suggestions, lastSentence);
+    }, 300);
+  });
 });
