@@ -15,6 +15,7 @@ export default class EnhancedTrie {
     constructor() {
         this.root = new TrieNode();
         this.totalInsertions = 0;
+        this.sentenceMap = new Map(); // Map to quickly look up frequency by sentence
     }
 
     /**
@@ -41,6 +42,38 @@ export default class EnhancedTrie {
         node.frequency++; // Increment frequency count
         node.lastUsed = Date.now(); // Update last used timestamp
         this.totalInsertions++;
+        
+        // Update the sentence map for quick frequency lookup
+        this.sentenceMap.set(sentence.trim(), node.frequency);
+    }
+
+    /**
+     * Get the frequency of a given sentence
+     * @param {string} sentence - The sentence to check
+     * @returns {number} - The frequency count, or 0 if not found
+     */
+    getFrequency(sentence) {
+        if (!sentence) return 0;
+        
+        // Try direct lookup from map first
+        if (this.sentenceMap.has(sentence.trim())) {
+            return this.sentenceMap.get(sentence.trim());
+        }
+        
+        // Fall back to trie traversal if not in map
+        const processedSentence = this.processSentence(sentence);
+        let node = this.root;
+        
+        for (const char of processedSentence) {
+            if (!node.children[char]) return 0;
+            node = node.children[char];
+        }
+        
+        if (node.isEndOfWord && node.fullSentence === sentence.trim()) {
+            return node.frequency;
+        }
+        
+        return 0;
     }
 
     /**
@@ -142,6 +175,9 @@ export default class EnhancedTrie {
         if (node.isEndOfWord && node.fullSentence === sentence) {
             node.frequency++;
             node.lastUsed = Date.now();
+            
+            // Update the map as well
+            this.sentenceMap.set(sentence, node.frequency);
         }
     }
 

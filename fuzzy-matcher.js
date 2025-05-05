@@ -152,6 +152,70 @@ export default class FuzzyMatcher {
     }
 
     /**
+     * Find the best matching variation of the query in the text
+     * @param {string} query - Original query
+     * @param {string} text - Text to search in
+     * @param {Array} variations - Variations of the query
+     * @returns {object} - Best match information
+     */
+    findBestMatchingVariation(query, text, variations = null) {
+        if (!variations) {
+            variations = this.getVariations(query);
+        }
+        
+        let bestMatch = { 
+            variation: query,
+            distance: this.levenshteinDistance(query.toLowerCase(), text.toLowerCase())
+        };
+        
+        for (const variation of variations) {
+            if (variation === query) continue;
+            
+            const distance = this.levenshteinDistance(variation.toLowerCase(), text.toLowerCase());
+            if (distance < bestMatch.distance) {
+                bestMatch = { variation, distance };
+            }
+        }
+        
+        return bestMatch;
+    }
+
+    /**
+     * Rank matches by similarity, preserving object structure and adding match info
+     * @param {string} query - Query string
+     * @param {Array} candidates - Candidate objects with 'text' property
+     * @returns {Array} - Ranked candidates with match info
+     */
+    rankMatchesWithInfo(query, candidates) {
+        if (!query || !candidates || candidates.length === 0) {
+            return [];
+        }
+        
+        // For each candidate, find the best matching variation
+        const withScores = candidates.map(candidate => {
+            const text = candidate.text || candidate;
+            const variation = candidate.variation || query;
+            
+            // Find best matching variation (either the provided one or compute)
+            const matchInfo = this.findBestMatchingVariation(query, text);
+            const distance = matchInfo.distance;
+            const score = distance / Math.max(query.length, text.length);
+            
+            return {
+                ...candidate,
+                score,
+                matchInfo: {
+                    distance,
+                    matchedVariation: matchInfo.variation
+                }
+            };
+        });
+        
+        // Sort by score (lower is better)
+        return withScores.sort((a, b) => a.score - b.score);
+    }
+
+    /**
      * Rank matches by similarity
      * @param {string} query - Query string
      * @param {Array} candidates - Candidate strings

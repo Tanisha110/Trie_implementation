@@ -1,56 +1,114 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Autocomplete Trie</title>
-    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Fuzzy Autocomplete Demo</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="style.css" rel="stylesheet">
 </head>
 <body>
-    <!-- Background Image Container -->
-    <div class="bg-image"></div>
-    <div class="overlay"></div>
-    
-    <!-- Navbar with File Upload -->
-    <div class="navbar">
-        <div class="navbar-title">Autocomplete Trie</div>
-        <div class="file-upload-container">
-            <label for="fileInput" class="btn btn-primary">Upload Text Files</label>
-            <input type="file" id="fileInput" accept=".txt" multiple style="display: none;"/>
-            <span id="upload-status"></span>
+  <div class="container">
+    <header>
+      <h1 class="mt-4 mb-4">
+        <i class="fas fa-keyboard text-primary"></i> Fuzzy Autocomplete
+        <span class="badge bg-secondary">Enhanced</span>
+      </h1>
+    </header>
+
+    <div class="row">
+      <div class="col-md-8">
+        <div class="card shadow-sm">
+          <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-pencil-alt"></i> Input Text</h5>
+          </div>
+          <div class="card-body">
+            <textarea id="prefixInput" class="form-control" rows="5" placeholder="Type a sentence or phrase... fuzzy matching and full-phrase suggestions in action!"></textarea>
+          </div>
         </div>
-        <!-- Dropdown for file selection -->
-        <div class="file-dropdown-container">
-            <select id="fileDropdown">
-                <option disabled selected>Uploaded files</option>
+
+        <div id="results" class="mt-4 card shadow-sm">
+          <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-lightbulb"></i> Suggestions</h5>
+          </div>
+          <div class="card-body" id="suggestionContainer">
+            <p class="text-muted">Suggestions will appear here as you type.</p>
+          </div>
+          <div class="pagination-controls p-2">
+            <button id="prevPage" class="btn btn-outline-secondary btn-sm me-2" disabled>Previous</button>
+            <span id="pageInfo" class="text-muted small">Page 1</span>
+            <button id="nextPage" class="btn btn-outline-secondary btn-sm ms-2">Next</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="card shadow-sm">
+          <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-upload"></i> Upload Data</h5>
+          </div>
+          <div class="card-body">
+            <p class="card-text">
+              <small class="text-muted">Upload text files to expand the autocomplete dictionary.</small>
+            </p>
+            <div class="mb-3">
+              <label for="fileInput" class="form-label">Select files</label>
+              <input class="form-control form-control-sm" type="file" id="fileInput" multiple accept=".txt">
+            </div>
+            <div id="upload-status" class="alert alert-info d-none"></div>
+            <select id="fileDropdown" class="form-select form-select-sm mt-3">
+              <option disabled selected>Uploaded files</option>
             </select>
+          </div>
         </div>
-    </div>
-    
-    <!-- Main Autocomplete Container -->
-    <div class="container mt-5">
-        <div class="autocomplete-container shadow-lg">
-            <!-- Left Column: Input Box -->
-            <div class="input-box">
-                <h2 class="text-center mb-4">Enter Prefix</h2>
-                <div class="form-group">
-                    <textarea id="prefixInput" class="form-control" placeholder="Start typing to see suggestions..."></textarea>
-                </div>
+
+        <div class="card mt-4 shadow-sm">
+          <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-info-circle"></i> About</h5>
+          </div>
+          <div class="card-body">
+            <div class="guide-item">
+              <i class="fas fa-check-circle text-success"></i>
+              <span>Phrase-aware fuzzy matching with quality scores</span>
             </div>
-            
-            <!-- Right Column: Suggestions Box -->
-            <div id="results" class="suggestions-box">
-                <h4>Suggestions</h4>
-                <!-- Suggestions will be populated here -->
+            <div class="guide-item">
+              <i class="fas fa-check-circle text-success"></i>
+              <span>Ranks by frequency and edit distance</span>
             </div>
+            <div class="guide-item">
+              <i class="fas fa-check-circle text-success"></i>
+              <span>Learns from selection to improve future suggestions</span>
+            </div>
+            <div class="guide-item">
+              <i class="fas fa-check-circle text-success"></i>
+              <span>Pagination for large result sets</span>
+            </div>
+          </div>
         </div>
+
+        <div class="legend mt-4 p-3 card shadow-sm">
+          <div class="legend-item">
+            <span class="frequency-dot opacity-25"></span>
+            <span class="legend-text">Rarely used</span>
+          </div>
+          <div class="legend-item">
+            <span class="frequency-dot opacity-50"></span>
+            <span class="legend-text">Sometimes used</span>
+          </div>
+          <div class="legend-item">
+            <span class="frequency-dot opacity-100"></span>
+            <span class="legend-text">Frequently used</span>
+          </div>
+        </div>
+      </div>
     </div>
-    
-    <!-- Scripts -->
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Only include the main script as a module - it will import the other modules -->
-    <script type="module" src="./script.js"></script>
+
+    <footer class="mt-5 mb-3 text-center text-muted">
+      <small>Enhanced Fuzzy Trie Autocomplete &copy; 2025</small>
+    </footer>
+  </div>
+
+  <script type="module" src="script.js"></script>
 </body>
 </html>

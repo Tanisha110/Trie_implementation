@@ -29,14 +29,39 @@ class FuzzyTrieAutocomplete {
     // Collect suggestions for each variation
     variations.forEach(variation => {
       const suggestions = this.trie.autocomplete(variation, limit);
-      allSuggestions.push(...suggestions);
+      
+      // Get frequency information for each suggestion
+      const suggestionsWithFrequency = suggestions.map(suggestion => {
+        const frequency = this.trie.getFrequency(suggestion);
+        return { text: suggestion, frequency, variation };
+      });
+      
+      allSuggestions.push(...suggestionsWithFrequency);
     });
 
-    // De-duplicate
-    const uniqueSuggestions = [...new Set(allSuggestions)];
+    // De-duplicate by text
+    const uniqueMap = new Map();
+    allSuggestions.forEach(item => {
+      if (!uniqueMap.has(item.text) || uniqueMap.get(item.text).frequency < item.frequency) {
+        uniqueMap.set(item.text, item);
+      }
+    });
+    
+    const uniqueSuggestions = Array.from(uniqueMap.values());
 
     // Rank final list by fuzzy similarity
-    return this.fuzzyMatcher.rankMatches(query, uniqueSuggestions).slice(0, limit);
+    const rankedSuggestions = this.fuzzyMatcher.rankMatchesWithInfo(query, uniqueSuggestions);
+
+    // Sort by frequency (descending), then distance (ascending)
+    rankedSuggestions.sort((a, b) => {
+      if (b.frequency !== a.frequency) {
+        return b.frequency - a.frequency; // Higher frequency first
+      }
+      return a.matchInfo?.distance - b.matchInfo?.distance; // Lower distance better
+    });
+    
+    return rankedSuggestions.slice(0, limit);
+    
   }
 
   recordSelection(sentence) {
@@ -128,6 +153,59 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Highlight text based on fuzzy matching
+  function highlightFuzzyMatch(text, query, matchInfo) {
+    // If matchInfo includes the variation that matched, use it
+    const toMatch = matchInfo && matchInfo.matchedVariation ? matchInfo.matchedVariation : query;
+    
+    // If there's a perfect substring match, highlight it
+    const lowerText = text.toLowerCase();
+    const lowerQuery = toMatch.toLowerCase();
+    const index = lowerText.indexOf(lowerQuery);
+    
+    if (index !== -1) {
+      // Direct substring match
+      return text.substring(0, index) + 
+             '<span class="highlight">' + 
+             text.substring(index, index + toMatch.length) + 
+             '</span>' + 
+             text.substring(index + toMatch.length);
+    } else {
+      // Try to highlight similar parts using character matching
+      const characters = text.split('');
+      let highlightedText = '';
+      let currentHighlight = false;
+      let queryIndex = 0;
+      
+      for (let i = 0; i < characters.length; i++) {
+        const char = characters[i].toLowerCase();
+        if (queryIndex < lowerQuery.length && char === lowerQuery[queryIndex]) {
+          // This character matches the query
+          if (!currentHighlight) {
+            highlightedText += '<span class="highlight">';
+            currentHighlight = true;
+          }
+          highlightedText += characters[i];
+          queryIndex++;
+        } else {
+          // This character doesn't match
+          if (currentHighlight) {
+            highlightedText += '</span>';
+            currentHighlight = false;
+          }
+          highlightedText += characters[i];
+        }
+      }
+      
+      // Close any open highlight span
+      if (currentHighlight) {
+        highlightedText += '</span>';
+      }
+      
+      return highlightedText;
+    }
+  }
+
   // Render paginated suggestions
   function displaySuggestions(suggestions, query) {
     resultsDiv.innerHTML = '<h4>Suggestions</h4>';
@@ -140,19 +218,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const start = currentPage * resultsPerPage;
     const pageItems = suggestions.slice(start, start + resultsPerPage);
 
-    pageItems.forEach(text => {
+    pageItems.forEach(suggestion => {
+      const text = suggestion.text || suggestion;
+      const frequency = suggestion.frequency || 1;
+      const matchInfo = suggestion.matchInfo || {};
+      
       const div = document.createElement('div');
       div.className = 'suggestion-item';
       
-      // Highlight match if possible
+      // Create a container for the text with highlighting
+      const textContainer = document.createElement('div');
+      textContainer.className = 'suggestion-text';
+      
+      // Add frequency indicator
+      const frequencyIndicator = document.createElement('div');
+      frequencyIndicator.className = 'frequency-indicator';
+      frequencyIndicator.innerHTML = `<span class="frequency-dot" style="opacity: ${Math.min(0.3 + frequency * 0.1, 1)}"></span>`;
+      frequencyIndicator.title = `Used ${frequency} time${frequency !== 1 ? 's' : ''}`;
+      
+      // Add the highlighted text
       try {
-        div.innerHTML = text.replace(
-          new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
-          '<span class="highlight">$1</span>'
-        );
+        textContainer.innerHTML = highlightFuzzyMatch(text, query, matchInfo);
       } catch (e) {
-        div.textContent = text; // Fallback if regex fails
+        textContainer.textContent = text; // Fallback if highlighting fails
       }
+      
+      // Add match quality indicator if available
+      if (matchInfo && matchInfo.distance !== undefined) {
+        const qualityIndicator = document.createElement('span');
+        qualityIndicator.className = 'match-quality';
+        
+        const stars = 5 - Math.min(Math.floor(matchInfo.distance * 3), 4);
+        qualityIndicator.innerHTML = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+        qualityIndicator.title = `Match quality: ${stars}/5`;
+        
+        textContainer.appendChild(qualityIndicator);
+      }
+      
+      div.appendChild(frequencyIndicator);
+      div.appendChild(textContainer);
       
       div.addEventListener('click', () => {
         // Replace last sentence in input or just set the value
